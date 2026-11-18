@@ -45,3 +45,13 @@ Expected checks: valid registration 201; duplicate case-insensitive email 409; i
 ## Privacy
 
 Secrets belong only in server environment variables. No original account data, .env files, logs, runtimes, or generated archives are included in this repository. Custom-login APIs must enforce ownership; a privileged PostgreSQL connection does not automatically inherit a browser user's identity.
+
+## Host validation and hosted deployments
+
+The server accepts localhost by default. On Vercel it also accepts the exact hosts from VERCEL_URL, VERCEL_PROJECT_PRODUCTION_URL, and VERCEL_BRANCH_URL when VERCEL=1. Other hosts are rejected; forwarded headers cannot expand the allowlist.
+
+For a custom domain, set CAMPUS_PUBLIC_ORIGIN to its full origin, for example https://campus.example.edu, in the hosting environment. Comma-separated aliases are supported. Restart/redeploy after changes. HTTPS requests use same-origin checks and Secure session cookies.
+
+Run the regression tests with `node --test tests/request-origin.test.mjs`.
+
+IMPORTANT: This host fix does not turn the local JSON app into a production serverless database app. The root server still writes accounts/workspaces to .local and keeps sessions in process memory. Vercel's local filesystem is not durable and function instances do not share memory. Do not use /tmp as permanent account storage. Complete PostgreSQL storage and shared/persistent authentication before using this application for real hosted accounts. The separate backend/ registration starter is not connected to the root website.
