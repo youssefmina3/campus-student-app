@@ -5,9 +5,12 @@
 !.env.example
 !**/.env.example
 node_modules/
+**/node_modules/
 .vercel/
 work/
 runtime/
+dist/vendor/*
+!dist/vendor/THIRD-PARTY-NOTICES.txt
 *.log
 *.zip
 .DS_Store

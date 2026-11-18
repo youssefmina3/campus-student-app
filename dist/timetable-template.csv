@@ -1,0 +1,4 @@
+course_code,name,day,start_time,end_time,class_type,room,building
+BIO101,Biology,Monday,09:00,10:30,Lecture,B204,Science
+BIO101,Biology,Wednesday,11:00,12:00,Section,B102,Science
+ENG101,Academic Writing,,,,,,

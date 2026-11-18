@@ -1,0 +1,5 @@
+Tesseract.js 7.0.0: https://github.com/naptha/tesseract.js (Apache-2.0)
+Tesseract.js-core 7.0.0: https://github.com/naptha/tesseract.js-core (Apache-2.0)
+English and Arabic tessdata_fast: https://github.com/tesseract-ocr/tessdata_fast (Apache-2.0)
+PDF.js 6.5.438: https://github.com/mozilla/pdf.js (Apache-2.0)
+Individual package license files are retained alongside their assets.

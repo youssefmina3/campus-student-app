@@ -1,0 +1,12 @@
+{
+  "name": "campus-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node launch.mjs",
+    "setup": "node scripts/prepare-import-assets.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
