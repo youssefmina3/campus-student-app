@@ -1,16 +1,101 @@
+import {wordBoxes,groupLines,classRegions,centerX,centerY} from './import-layout.js';
 export const WEEKDAYS=[['Monday','Mon','الاثنين','الإثنين'],['Tuesday','Tue','الثلاثاء'],['Wednesday','Wed','Wendesday','الأربعاء','الاربعاء'],['Thursday','Thu','الخميس'],['Friday','Fri','الجمعة'],['Saturday','Sat','السبت'],['Sunday','Sun','الأحد','الاحد']];
-export function parseDay(value){const text=String(value??'').trim().toLowerCase().replace(/[.,]/g,'');if(/^[1-7]$/.test(text))return Number(text);for(let i=0;i<7;i++)if(WEEKDAYS[i].some(d=>d.toLowerCase()===text))return i+1;return null}
-export function parseTime(value){let s=String(value??'').trim().toUpperCase().replace(/[：]/g,':').replace(/(\d)[O](?=\s*[AP]M|$)/g,'$10');const m=s.match(/\b(\d{1,2})\s*[:.]\s*(\d{2})\s*([AP]\s*M)?\b/);if(!m)return '';let hour=Number(m[1]),minute=Number(m[2]),half=m[3]?.replace(/\s/g,'');if(minute>59||hour>23||half&&(hour<1||hour>12))return '';if(half){hour%=12;if(half==='PM')hour+=12}return String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0')}
-export function courseCodes(text){const normalized=String(text).toUpperCase(),out=[];const regex=/\b([A-Z]{2,6})\s*[-:]?\s*([0-9][0-9OIL]{2,4})\b/g;for(const match of normalized.matchAll(regex))out.push({code:match[1]+match[2].replace(/O/g,'0').replace(/[IL]/g,'1'),index:match.index,length:match[0].length});return out}
-export function draftRow(value={}){return {id:crypto.randomUUID(),include:true,course_code:'',name:'',has_schedule:false,weekday:null,starts_at_local:'',ends_at_local:'',title:'',room:'',building:'',source:'',...value}}
-function boxes(tokens){return tokens.filter(t=>t.text?.trim()&&t.box).flatMap(t=>{const words=t.text.trim().split(/\s+/),length=t.text.length;let offset=0;return words.map(word=>{const at=t.text.indexOf(word,offset);offset=at+word.length;const width=t.box.x1-t.box.x0;return {text:word,box:{x0:t.box.x0+width*at/length,x1:t.box.x0+width*(at+word.length)/length,y0:t.box.y0,y1:t.box.y1},confidence:t.confidence??100}})})}
-const cx=t=>(t.box.x0+t.box.x1)/2,cy=t=>(t.box.y0+t.box.y1)/2;
-export function parseSpatial(tokens,{width,height,source=''}){const words=boxes(tokens),days=words.map(w=>({...w,day:parseDay(w.text)})).filter(w=>w.day&&w.box.x0<width*.28),codes=words.flatMap((w,index)=>{let code=courseCodes(w.text),next=words[index+1];if(!code.length&&/^[A-Z]{2,6}$/i.test(w.text)&&next&&/^[0-9][0-9OIL]{2,4}$/i.test(next.text)&&Math.abs(cy(w)-cy(next))<(w.box.y1-w.box.y0)*.7&&next.box.x0-w.box.x1<(w.box.y1-w.box.y0)*3){code=courseCodes(w.text+' '+next.text);return code.map(c=>({...w,box:{x0:w.box.x0,y0:Math.min(w.box.y0,next.box.y0),x1:next.box.x1,y1:Math.max(w.box.y1,next.box.y1)},code:c.code}))}return code.map(c=>({...w,code:c.code}))});const results=[];
-for(const token of codes){const anchor=days.slice().sort((a,b)=>Math.abs(cy(a)-cy(token))-Math.abs(cy(b)-cy(token)))[0];const others=days.filter(d=>d!==anchor),rowTop=anchor?Math.max(0,...others.filter(d=>cy(d)<cy(anchor)).map(d=>(cy(d)+cy(anchor))/2)):Math.max(0,token.box.y0-height*.12),rowEnd=anchor?Math.min(height,...others.filter(d=>cy(d)>cy(anchor)).map(d=>(cy(d)+cy(anchor))/2)):Math.min(height,token.box.y1+height*.16);const rowCodes=codes.filter(c=>cy(c)>=rowTop&&cy(c)<rowEnd).sort((a,b)=>cx(a)-cx(b)),position=rowCodes.indexOf(token);const left=position>0?(cx(rowCodes[position-1])+cx(token))/2:Math.max(width*.07,token.box.x0-width*.18),right=position>=0&&position<rowCodes.length-1?(cx(token)+cx(rowCodes[position+1]))/2:Math.min(width,token.box.x1+width*.22);const inColumn=w=>cx(w)>left&&cx(w)<right;const nearby=words.filter(w=>inColumn(w)&&cy(w)>=rowTop&&cy(w)<rowEnd);
-const times=words.filter(w=>inColumn(w)&&w.box.y0>=Math.max(rowTop,token.box.y0-(rowEnd-rowTop)*.7)&&cy(w)<=cy(token)&&/\d[:.]\d/.test(w.text)).map(w=>{let suffix=nearby.filter(s=>/^[AP]M$/i.test(s.text)&&s.box.x0>=w.box.x1&&s.box.x0-w.box.x1<(w.box.y1-w.box.y0)*4&&Math.abs(cy(s)-cy(w))<(w.box.y1-w.box.y0)*.7).sort((a,b)=>a.box.x0-b.box.x0)[0]?.text||'';return {...w,time:parseTime(w.text+' '+suffix)}}).filter(w=>w.time).sort((a,b)=>Math.abs(cy(a)-cy(token))-Math.abs(cy(b)-cy(token)));const bestY=times[0]?cy(times[0]):0,pair=times.filter(w=>Math.abs(cy(w)-bestY)<Math.max(10,(w.box.y1-w.box.y0)*.8)).sort((a,b)=>cx(a)-cx(b)).slice(0,2);
-const rooms=nearby.filter(w=>/^[#]?[A-Z][0-9OIL]{2,4}$/i.test(w.text)&&w.box.y0>token.box.y1).sort((a,b)=>(Math.abs(cx(a)-cx(token))+.25*(a.box.y0-token.box.y1))-(Math.abs(cx(b)-cx(token))+.25*(b.box.y0-token.box.y1))),room=rooms[0];const lines=[];for(const w of nearby.filter(w=>w.box.y0>token.box.y1-2&&w.box.y0<(room?.box.y0??rowEnd)&&/\p{L}/u.test(w.text)&&!courseCodes(w.text).length&&!/^(?:AM|PM|ROOM|LECT\.?|SEC\.?)$/i.test(w.text))){let line=lines.find(l=>Math.abs(l.y-cy(w))<Math.max(5,(w.box.y1-w.box.y0)*.55));if(!line){line={y:cy(w),words:[]};lines.push(line)}line.words.push(w)}lines.sort((a,b)=>a.y-b.y);const nameLines=lines.map(l=>l.words.sort((a,b)=>a.box.x0-b.box.x0).map(w=>w.text).join(' ')).filter(line=>!/^(?:Dr\.?|Professor|Lecturer|دكتور|الدكتور|الدكتورة|أستاذ)/i.test(line));const firstName=nameLines[0]||'';let name=(/[\u0600-\u06ff]/.test(firstName)?firstName:nameLines.slice(0,2).filter(line=>!/[\u0600-\u06ff]/.test(line)).join(' ')).replace(/\s+/g,' ').trim();if(name.startsWith('#')||name.length>140)name='';const type=nearby.filter(w=>/^(?:lect(?:ure)?|sec(?:tion)?|lab|tutorial)\.?$/i.test(w.text)&&w.box.y0>token.box.y1).sort((a,b)=>Math.abs(cx(a)-cx(token))-Math.abs(cx(b)-cx(token)))[0]?.text||'';results.push(draftRow({course_code:token.code,name,has_schedule:pair.length>0,weekday:anchor?.day||null,starts_at_local:pair[0]?.time||'',ends_at_local:pair[1]?.time||'',title:/^sec/i.test(type)?'Section':/^lect/i.test(type)?'Lecture':/^lab/i.test(type)?'Lab':/^tutorial/i.test(type)?'Tutorial':'',room:room?room.text.replace(/^#/,'').replace(/^([A-Z])(.+)$/i,(_,prefix,tail)=>prefix.toUpperCase()+tail.toUpperCase().replace(/O/g,'0').replace(/[IL]/g,'1')):'',source}))}
-return results.filter((r,index)=>!results.slice(0,index).some(x=>x.course_code===r.course_code&&x.weekday===r.weekday&&x.starts_at_local===r.starts_at_local&&x.ends_at_local===r.ends_at_local&&x.room===r.room))}
+const digits=value=>String(value??'').replace(/[٠-٩۰-۹]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.includes(c)?c.charCodeAt(0)-1632:c.charCodeAt(0)-1776));
+const dayText=value=>String(value??'').trim().toLowerCase().replace(/[.,:،\u0640\u064b-\u065f]/g,'').replace(/[إأآ]/g,'ا');
+export function parseNamedDay(value){const text=dayText(value);for(let i=0;i<7;i++)if(WEEKDAYS[i].some(d=>dayText(d)===text))return i+1;return null}
+export function parseDay(value){const text=digits(value).trim();return /^[1-7]$/.test(text)?Number(text):parseNamedDay(text)}
+const TIME_PATTERN=/(?<![\p{L}\d])(?:[0-2]?\d\s*[:.：]\s*[0-5\dO]\s*[\dO](?:\s*(?:[AP]\s*\.?\s*M\.?|صباحا?[ً]?|مساء[ً]?|[صم]))?|(?:1[0-2]|0?[1-9])\s*(?:[AP]\s*\.?\s*M\.?|صباحا?[ً]?|مساء[ً]?|[صم]))(?![\p{L}\d])/giu;
+export function parseTime(value){
+  const s=digits(value).trim().toUpperCase().replace(/：/g,':').replace(/[\u064b-\u065f]/g,'');
+  const match=s.match(/(?:^|[^\d])([0-2]?\d)\s*(?:[:.]\s*([\dO])\s*([\dO]))?\s*([AP]\s*\.?\s*M\.?|صباحا?|مساء|[صم])?(?![\p{L}\d])/u);
+  if(!match||(!match[2]&&!match[4]))return '';
+  let hour=Number(match[1]);const minute=Number(((match[2]||'0')+(match[3]||'0')).replace(/O/g,'0'));
+  const half=(match[4]||'').replace(/[\s.]/g,'');
+  if(minute>59||hour>23||half&&(hour<1||hour>12))return '';
+  if(half){hour%=12;if(half==='PM'||half==='م'||half==='مساء')hour+=12}
+  return String(hour).padStart(2,'0')+':'+String(minute).padStart(2,'0');
+}
+export function courseCodes(text){const normalized=digits(text).toUpperCase(),out=[];for(const m of normalized.matchAll(/\b([A-Z]{2,6})\s*[-:]?\s*([0-9][0-9OIL]{2,4})\b/g))if(!['ROOM','LECT','SECTION','PERIOD'].includes(m[1]))out.push({code:m[1]+m[2].replace(/O/g,'0').replace(/[IL]/g,'1'),index:m.index,length:m[0].length});return out}
+export function draftRow(value={}){return {id:crypto.randomUUID(),include:true,course_code:'',name:'',has_schedule:false,weekday:null,starts_at_local:'',ends_at_local:'',title:'',room:'',building:'',source:'',warnings:[],...value}}
+const classType=text=>/\b(?:sec(?:tion)?|tutorial)\b|سكشن|تمرين/i.test(text)?(/tutorial/i.test(text)?'Tutorial':'Section'):/\b(?:lect(?:ure)?)\b|محاضرة/i.test(text)?'Lecture':/\blab\b|معمل/i.test(text)?'Lab':'';
+const roomCode=text=>digits(text).match(/(?:\broom\s*(?:no\.?|number)?\s*#?\s*|(?:^|\s)#)([A-Z][\dOIL]{2,4})\b/i)?.[1]?.toUpperCase().replace(/O/g,'0').replace(/[IL]/g,'1')||'';
+export const parseRoomText=roomCode;
+const timesIn=text=>[...digits(text).matchAll(TIME_PATTERN)].map(m=>({text:m[0],value:parseTime(m[0]),index:m.index})).filter(t=>t.value);
+function uniqueRows(rows){return rows.filter((r,i)=>!rows.slice(0,i).some(a=>a.course_code===r.course_code&&a.weekday===r.weekday&&a.starts_at_local===r.starts_at_local&&a.ends_at_local===r.ends_at_local&&a.room===r.room))}
+export function extractionQuality(rows){
+  if(!rows.length)return 0;
+  return rows.reduce((sum,r)=>sum+(r.course_code?1:0)+(r.name?2:0)+(r.weekday?2:0)+(r.starts_at_local&&r.ends_at_local&&r.ends_at_local>r.starts_at_local?4:0)+(r.title?1:0)+(r.room?1:0)-validateDraft(r).length*2,0)/rows.length;
+}
+export function chooseExtraction(...candidates){return candidates.reduce((best,rows)=>extractionQuality(rows)>extractionQuality(best)||extractionQuality(rows)===extractionQuality(best)&&rows.length>best.length?rows:best,[])}
+export function mergeClassReadings(original,refined){
+  if(!original)return refined;if(!refined)return original;
+  if(original.course_code!==refined.course_code||original.weekday!==refined.weekday)return original;
+  const result={...original,field_confidence:{...original.field_confidence}},warnings=new Set(original.warnings||[]);
+  let disagreed=false;
+  for(const key of ['name','room','title']){
+    const a=original[key],b=refined[key];
+    if(a&&b&&a.toLowerCase()!==b.toLowerCase())disagreed=true;
+    if(b&&(!a||(refined.field_confidence?.[key]??0)>(original.field_confidence?.[key]??0))){result[key]=b;result.field_confidence[key]=refined.field_confidence?.[key]}
+  }
+  const valid=r=>r.starts_at_local&&r.ends_at_local&&r.ends_at_local>r.starts_at_local;
+  if(valid(refined)&&(!valid(original)||(refined.field_confidence?.times??0)>(original.field_confidence?.times??0))){
+    result.starts_at_local=refined.starts_at_local;result.ends_at_local=refined.ends_at_local;
+  }
+  if(valid(original)&&valid(refined)&&(original.starts_at_local!==refined.starts_at_local||original.ends_at_local!==refined.ends_at_local))disagreed=true;
+  if(valid(result))warnings.delete('Could not confidently identify both class times.');
+  if(disagreed)warnings.add('Text readings differed. Check this entry against your file.');
+  result.warnings=[...warnings];return result;
+}
+export function timetableRegions(tokens,dimensions){return classRegions(wordBoxes(tokens),dimensions,parseNamedDay,courseCodes)}
+export function parseSpatial(tokens,{width,height,source='',regions}={}){
+  const average=items=>{const scores=(items||[]).map(w=>w.confidence??100);return scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0};
+  const words=wordBoxes(tokens),cells=regions||classRegions(words,{width,height},parseNamedDay,courseCodes),results=[];
+  for(const cell of cells){
+    const {anchor}=cell;
+    const nearby=words.filter(w=>centerX(w)>=cell.x0&&centerX(w)<cell.x1&&centerY(w)>=cell.y0&&centerY(w)<cell.y1);
+    const lines=groupLines(nearby),text=lines.map(l=>l.text).join('\n');
+    // Read both times from the same visual line, never from a neighboring class.
+    const timeLines=lines.map(l=>({...l,times:timesIn(l.text)})).filter(l=>l.times.length);
+    const timeLine=timeLines.filter(l=>l.times.length>=2).sort((a,b)=>Math.abs(a.y-centerY(anchor))-Math.abs(b.y-centerY(anchor)))[0];
+    const foundTimes=timeLine?.times||timeLines.sort((a,b)=>Math.abs(a.y-centerY(anchor))-Math.abs(b.y-centerY(anchor)))[0]?.times||[];
+    const footer=lines.find(l=>roomCode(l.text)||classType(l.text)&&l.y>anchor.box.y1);
+    const nameLines=lines.filter(l=>l.y>anchor.box.y1&&l.y<(footer?.y??cell.y1)&&/\p{L}/u.test(l.text)&&!timesIn(l.text).length&&!courseCodes(l.text).length&&!parseNamedDay(l.text)&&!/^\s*(?:Dr\.?|Prof(?:essor)?\.?|Lecturer|دكتور|الدكتور|الدكتورة|أستاذ)/i.test(l.text));
+    const first=nameLines[0];let name=first?.text||'';
+    const second=nameLines[1];
+    if(first&&second&&second.y-first.y<first.height*1.65&&Math.abs(second.height-first.height)<first.height*.2&&/[\u0600-\u06ff]/.test(first.text)===/[\u0600-\u06ff]/.test(second.text))name+=' '+second.text;
+    name=name.replace(/[|•○◯]+/g,' ').replace(/\s+/g,' ').trim();
+    const room=roomCode(text)||nearby.find(w=>/^[#]?[A-Z][\dOIL]{2,4}$/i.test(digits(w.text))&&w.box.y0>anchor.box.y1)?.text.replace(/^#/,'').toUpperCase().replace(/O/g,'0').replace(/[IL]/g,'1')||'';
+    const confidence=nearby.filter(w=>Number.isFinite(w.confidence)).reduce((a,w)=>({sum:a.sum+w.confidence,n:a.n+1}),{sum:0,n:0});
+    const warnings=[];
+    if(confidence.n&&confidence.sum/confidence.n<75)warnings.push('Some text was unclear. Compare this entry with your file.');
+    if(!cell.weekday)warnings.push('Weekday could not be identified.');
+    if(/\broom\b/i.test(text)&&!room)warnings.push('Room number was unclear. Enter it from your file.');
+    if(foundTimes.length!==2)warnings.push('Could not confidently identify both class times.');
+    if(foundTimes.length>2)warnings.push('More than two times were found in this class area.');
+    results.push(draftRow({course_code:anchor.code,name,has_schedule:true,weekday:cell.weekday,starts_at_local:foundTimes[0]?.value||'',ends_at_local:foundTimes[1]?.value||'',title:classType(text),room,source,warnings,field_confidence:{name:average(first?.words),room:average(lines.find(l=>roomCode(l.text))?.words),title:average(lines.find(l=>classType(l.text))?.words),times:average(timeLine?.words)}}));
+  }
+  return uniqueRows(results);
+}
+export function parsePlainText(text,source=''){
+  const lines=String(text).split(/\r?\n/).map(l=>l.trim()).filter(Boolean),rows=[];let day=null;
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i],named=parseNamedDay(line);if(named){day=named;continue}
+    const codes=courseCodes(line);if(!codes.length)continue;
+    for(let c=0;c<codes.length;c++){
+      const code=codes[c],segment=line.slice(code.index+code.length,codes[c+1]?.index),next=[];
+      if(codes.length===1)for(let j=i+1;j<Math.min(lines.length,i+5);j++){if(courseCodes(lines[j]).length||parseNamedDay(lines[j]))break;next.push(lines[j])}
+      const inlineDay=WEEKDAYS.findIndex(names=>names.some(d=>dayText(segment).split(/\s+/).includes(dayText(d))));
+      const content=[segment,...next].join('\n'),before=i>0&&!courseCodes(lines[i-1]).length&&!parseNamedDay(lines[i-1])?lines[i-1]:'';
+      let times=timesIn(content);if(times.length<2&&timesIn(before).length>=2)times=timesIn(before);
+      let name=segment.trim();if(!name)name=next.find(l=>!timesIn(l).length&&!roomCode(l)&&!classType(l)&&!/^Dr\.?\s/i.test(l))||'';
+      name=name.split(TIME_PATTERN)[0].replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/gi,'').split(/\b(?:Room|Lecture|Lect\.?|Section|Sec\.?|Lab|Tutorial)\b/i)[0].replace(/[|;,]+/g,' ').trim();
+      const weekday=inlineDay>=0?inlineDay+1:day;
+      rows.push(draftRow({course_code:code.code,name,has_schedule:Boolean(times.length||weekday||classType(content)),weekday,starts_at_local:times[0]?.value||'',ends_at_local:times[1]?.value||'',title:classType(content),room:roomCode(content),source,warnings:times.length>2?['More than two class times were found. Check this entry.']:[]}));
+    }
+  }
+  return uniqueRows(rows);
+}
+export function validateDraft(row){const errors=[];if(!row.name.trim())errors.push('Subject name is required');if(row.name.length>160)errors.push('Subject name is too long');if(row.course_code.length>30)errors.push('Course code is too long');if(row.has_schedule){if(!Number.isInteger(Number(row.weekday))||Number(row.weekday)<1||Number(row.weekday)>7)errors.push('Choose a weekday');if(!/^\d{2}:\d{2}$/.test(row.starts_at_local)||!parseTime(row.starts_at_local))errors.push('Set the start time');if(!/^\d{2}:\d{2}$/.test(row.ends_at_local)||!parseTime(row.ends_at_local))errors.push('Set the end time');if(row.starts_at_local&&row.ends_at_local&&row.ends_at_local<=row.starts_at_local)errors.push('End must follow start');if(!row.title)errors.push('Choose lecture, section, or lab')}return errors}
 export function parseDelimited(text){const delimiter=text.split(/\r?\n/,1)[0].includes('\t')?'\t':text.split(/\r?\n/,1)[0].includes(';')?';':',';const rows=[];let row=[],field='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){field+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(field);field=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(field);if(row.some(x=>x.trim()))rows.push(row);row=[];field=''}else field+=c}row.push(field);if(row.some(x=>x.trim()))rows.push(row);if(quoted)throw Error('The CSV has an unclosed quoted field.');const headers=(rows.shift()||[]).map(h=>h.trim().toLowerCase().replace(/[\s-]+/g,'_'));return rows.map(values=>Object.fromEntries(headers.map((h,i)=>[h,values[i]?.trim()||''])))}
 export function parseTable(rows,source=''){return rows.map(r=>{const code=r.course_code||r.subject_code||r.code||'',name=r.name||r.course_name||r.subject||r.subject_name||'',start=parseTime(r.starts_at_local||r.start_time||r.start||''),end=parseTime(r.ends_at_local||r.end_time||r.end||''),day=parseDay(r.weekday||r.day||'');return draftRow({course_code:code,name,has_schedule:Boolean(day||start||end),weekday:day,starts_at_local:start,ends_at_local:end,title:r.title||r.class_type||r.type||'',room:r.room||r.room_name||'',building:r.building||'',source})}).filter(r=>r.course_code||r.name)}
-export function parsePlainText(text,source=''){return String(text).split(/\r?\n/).flatMap(line=>{const codes=courseCodes(line);if(!codes.length)return [];const code=codes[0],timeMatches=[...line.matchAll(/\b\d{1,2}[:.]\d{2}\s*(?:[AP]M)?\b/gi)],day=WEEKDAYS.findIndex(names=>names.some(d=>new RegExp('(?:^|\\s)'+d+'(?:\\s|$)','i').test(line)));let name=line.slice(code.index+code.length).split(/\d{1,2}[:.]\d{2}/)[0].replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/gi,'').replace(/[|;,]+/g,' ').trim();return [draftRow({course_code:code.code,name,has_schedule:timeMatches.length>0,weekday:day<0?null:day+1,starts_at_local:parseTime(timeMatches[0]?.[0]),ends_at_local:parseTime(timeMatches[1]?.[0]),title:/\bsec(?:tion)?\b/i.test(line)?'Section':/\blect(?:ure)?\b/i.test(line)?'Lecture':'',room:line.match(/\broom\s*#?\s*([A-Z]\d{2,4})\b/i)?.[1]||'',source})]})}
-export function validateDraft(row){const errors=[];if(!row.name.trim())errors.push('Subject name is required');if(row.name.length>160)errors.push('Subject name is too long');if(row.course_code.length>30)errors.push('Course code is too long');if(row.has_schedule){if(!Number.isInteger(Number(row.weekday))||Number(row.weekday)<1||Number(row.weekday)>7)errors.push('Choose a weekday');if(!/^\d{2}:\d{2}$/.test(row.starts_at_local)||!parseTime(row.starts_at_local))errors.push('Set the start time');if(!/^\d{2}:\d{2}$/.test(row.ends_at_local)||!parseTime(row.ends_at_local))errors.push('Set the end time');if(row.starts_at_local&&row.ends_at_local&&row.ends_at_local<=row.starts_at_local)errors.push('End must follow start');if(!row.title)errors.push('Choose lecture, section, or lab')}return errors}
+
