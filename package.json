@@ -4,9 +4,14 @@
   "type": "module",
   "scripts": {
     "start": "node launch.mjs",
-    "setup": "node scripts/prepare-import-assets.mjs"
+    "setup": "node scripts/prepare-import-assets.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "postgres": "3.4.7"
   }
 }
+

@@ -14,3 +14,7 @@ dist/vendor/*
 *.log
 *.zip
 .DS_Store
+
+# Generated integration-test account IDs and local connection probes
+.test-accounts.json
+.connection-test.json
