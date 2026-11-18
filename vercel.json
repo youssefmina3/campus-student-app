@@ -3,8 +3,7 @@
   "buildCommand": "npm run setup",
   "functions": {
     "server.mjs": {
-      "includeFiles": ["dist/**", "certs/**"]
+      "includeFiles": "{dist,certs}/**"
     }
   }
 }
-
